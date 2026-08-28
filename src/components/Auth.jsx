@@ -221,17 +221,6 @@ function Auth({ onLogin }) {
               />
               <span>Remember me</span>
             </label>
-
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => {
-                setEmail('demo@expense.app')
-                setPassword('demo123')
-              }}
-            >
-              Use demo login
-            </button>
           </div>
 
           <button
