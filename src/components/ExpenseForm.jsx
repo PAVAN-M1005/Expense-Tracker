@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { addExpense } from '../api'
 import { PAYMENT_METHODS } from '../utils'
 
 function ExpenseForm({
@@ -27,7 +28,7 @@ function ExpenseForm({
     return `${selectedMonth}-${String(lastDay).padStart(2, '0')}`
   }
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault()
 
     if (!selectedMonth) return alert('Please select a month first')
@@ -37,26 +38,35 @@ function ExpenseForm({
     if (!date) return alert('Please select a date')
     if (!date.startsWith(selectedMonth)) return alert('Please select a date from the selected month')
 
-    const newExpense = {
-      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
-      amount: Number(amount),
-      category,
-      description: description.trim(),
-      date,
-      paymentMethod,
-      notes: notes.trim(),
-      recurringId: null,
-      recurringOccurrence: null
+    try {
+      const response = await addExpense({
+        amount: Number(amount),
+        category,
+        description: description.trim(),
+        date,
+        paymentMethod,
+        notes: notes.trim()
+      })
+
+      const newExpense = {
+        ...response.expense,
+        amount: Number(response.expense.amount),
+        paymentMethod: response.expense.payment_method || paymentMethod,
+        recurringId: response.expense.recurring_id || null,
+        recurringDueDate: response.expense.recurring_due_date || null
+      }
+
+      setExpenses((previous) => [...previous, newExpense])
+
+      setAmount('')
+      setCategory('')
+      setDescription('')
+      setPaymentMethod('UPI')
+      setNotes('')
+      setDate(`${selectedMonth}-01`)
+    } catch (error) {
+      alert(error.message || 'Failed to add expense')
     }
-
-    setExpenses((previous) => [...previous, newExpense])
-
-    setAmount('')
-    setCategory('')
-    setDescription('')
-    setPaymentMethod('UPI')
-    setNotes('')
-    setDate(`${selectedMonth}-01`)
   }
 
   return (

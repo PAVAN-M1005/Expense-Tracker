@@ -1,4 +1,8 @@
 import { useMemo, useState } from 'react'
+import {
+  deleteExpense as deleteExpenseApi,
+  updateExpense as updateExpenseApi
+} from '../api'
 import { formatDate, PAYMENT_METHODS } from '../utils'
 
 function ExpenseList({
@@ -34,15 +38,44 @@ function ExpenseList({
 
   const total = visibleExpenses.reduce((sum, expense) => sum + Number(expense.amount), 0)
 
-  const deleteExpense = (id) => {
+  const deleteExpense = async (id) => {
     if (!window.confirm('Delete this expense?')) return
-    setExpenses((previous) => previous.filter((expense) => expense.id !== id))
+
+    try {
+      await deleteExpenseApi(id)
+      setExpenses((previous) => previous.filter((expense) => expense.id !== id))
+    } catch (error) {
+      alert(error.message || 'Failed to delete expense')
+    }
   }
 
-  const updateExpense = (id, patch) => {
-    setExpenses((previous) => previous.map((expense) =>
-      expense.id === id ? { ...expense, ...patch } : expense
-    ))
+  const updateExpense = async (id, patch) => {
+    try {
+      const currentExpense = expenses.find((expense) => expense.id === id)
+
+      if (!currentExpense) return
+
+      const response = await updateExpenseApi(id, {
+        ...currentExpense,
+        ...patch,
+        paymentMethod: patch.paymentMethod ?? currentExpense.paymentMethod ?? 'UPI',
+        notes: patch.notes ?? currentExpense.notes ?? ''
+      })
+
+      const updatedExpense = {
+        ...response.expense,
+        amount: Number(response.expense.amount),
+        paymentMethod: response.expense.payment_method || 'UPI',
+        recurringId: response.expense.recurring_id || null,
+        recurringDueDate: response.expense.recurring_due_date || null
+      }
+
+      setExpenses((previous) => previous.map((expense) =>
+        expense.id === id ? updatedExpense : expense
+      ))
+    } catch (error) {
+      alert(error.message || 'Failed to update expense')
+    }
   }
 
   return (
