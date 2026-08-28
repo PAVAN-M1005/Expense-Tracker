@@ -169,6 +169,9 @@ function App() {
     setSearchText
   ] = useState('')
 
+  const [budgetDraft, setBudgetDraft] =
+    useState('')
+
 
   /*
     -----------------------------------------
@@ -489,6 +492,19 @@ function App() {
         ] || ''
       : ''
 
+  useEffect(() => {
+    if (!selectedMonth) {
+      setBudgetDraft('')
+      return
+    }
+
+    setBudgetDraft(
+      currentBudget === ''
+        ? ''
+        : String(currentBudget)
+    )
+  }, [selectedMonth, currentBudget])
+
 
   /*
     -----------------------------------------
@@ -508,53 +524,50 @@ function App() {
       }
 
       try {
+        const normalizedValue =
+          value === '' || value === null
+            ? ''
+            : String(value).trim()
 
-        if (value === '') {
+        if (normalizedValue === '') {
+          const existing =
+            budgets[selectedMonth]
 
-          await deleteBudget(
-            selectedMonth
-          )
+          if (existing !== undefined) {
+            await deleteBudget(selectedMonth)
+          }
 
-          setBudgets(
-            (previous) => {
+          setBudgets((previous) => {
+            const copy = { ...previous }
+            delete copy[selectedMonth]
+            return copy
+          })
 
-              const copy = {
-                ...previous
-              }
-
-              delete copy[
-                selectedMonth
-              ]
-
-              return copy
-            }
-          )
-
+          setBudgetDraft('')
           return
         }
 
+        const numericValue = Number(normalizedValue)
 
-        const response =
-          await saveBudget(
-            selectedMonth,
-            Number(value)
-          )
+        if (!Number.isFinite(numericValue) || numericValue < 0) {
+          alert('Budget must be a valid non-negative number')
+          return
+        }
 
-
-        setBudgets(
-          (previous) => ({
-            ...previous,
-            [selectedMonth]:
-              response.budget.amount
-          })
+        const response = await saveBudget(
+          selectedMonth,
+          numericValue
         )
 
+        setBudgets((previous) => ({
+          ...previous,
+          [selectedMonth]:
+            response.budget.amount
+        }))
+
+        setBudgetDraft(String(response.budget.amount))
       } catch (error) {
-
-        alert(
-          error.message
-        )
-
+        alert(error.message)
       }
     }
 
@@ -1141,19 +1154,16 @@ function App() {
                 <input
                   type="number"
                   min="0"
+                  step="0.01"
                   placeholder={
                     selectedMonth
                       ? 'Enter monthly budget'
                       : 'Select month first'
                   }
-                  value={
-                    currentBudget
-                  }
-                  disabled={
-                    !selectedMonth
-                  }
+                  value={budgetDraft}
+                  disabled={!selectedMonth}
                   onChange={(e) =>
-                    setCurrentBudget(
+                    setBudgetDraft(
                       e.target.value
                     )
                   }
@@ -1161,19 +1171,28 @@ function App() {
 
               </div>
 
-
-              {selectedMonth &&
-                currentBudget !==
-                  '' && (
+              {selectedMonth && (
+                <div className="button-wrap budget-actions">
                   <button
-                    className="danger-button budget-clear"
-                    onClick={
-                      clearCurrentBudget
+                    className="primary-button small"
+                    onClick={() =>
+                      setCurrentBudget(budgetDraft)
                     }
+                    disabled={!selectedMonth}
                   >
-                    Clear Budget
+                    Save Budget
                   </button>
-                )}
+
+                  {currentBudget !== '' && (
+                    <button
+                      className="danger-button small budget-clear"
+                      onClick={clearCurrentBudget}
+                    >
+                      Clear Budget
+                    </button>
+                  )}
+                </div>
+              )}
 
             </div>
 
