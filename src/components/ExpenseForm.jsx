@@ -1,114 +1,120 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { PAYMENT_METHODS } from '../utils'
 
-function ExpenseForm() {
-    const [amount , setAmount] = useState('')
-    const [category, setCategory] = useState('')
-    const [description, setDescription] = useState('')
-    const [date, setDate] = useState('')
-    const [expenses , setExpenses] = useState([])
+function ExpenseForm({
+  expenses,
+  setExpenses,
+  selectedMonth,
+  categories
+}) {
+  const [amount, setAmount] = useState('')
+  const [category, setCategory] = useState('')
+  const [description, setDescription] = useState('')
+  const [date, setDate] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('UPI')
+  const [notes, setNotes] = useState('')
 
-    const handleSubmit =(event) => {
-        event.preventDefault() 
+  useEffect(() => {
+    if (selectedMonth && (!date || !date.startsWith(selectedMonth))) {
+      setDate(`${selectedMonth}-01`)
+    }
+  }, [selectedMonth])
 
-        if (amount === '') {
-    alert('Please enter an amount')
-    return
+  const getLastDayOfMonth = () => {
+    if (!selectedMonth) return undefined
+    const [year, month] = selectedMonth.split('-').map(Number)
+    const lastDay = new Date(year, month, 0).getDate()
+    return `${selectedMonth}-${String(lastDay).padStart(2, '0')}`
   }
 
-  if (category === '') {
-    alert('Please select a category')
-    return
-  }
+  const handleSubmit = (event) => {
+    event.preventDefault()
 
-  if (description === '') {
-    alert('Please enter a description')
-    return
-  }
+    if (!selectedMonth) return alert('Please select a month first')
+    if (!amount || Number(amount) <= 0) return alert('Amount must be greater than 0')
+    if (!category) return alert('Please select a category')
+    if (!description.trim()) return alert('Please enter a description')
+    if (!date) return alert('Please select a date')
+    if (!date.startsWith(selectedMonth)) return alert('Please select a date from the selected month')
 
-  if (date === '') {
-    alert('Please select a date')
-    return
-  }
-
-        const newExpense ={
-            id: Date.now(),
-            amount: amount,
-            category: category,
-            description: description,
-            date: date
-        }
-        console.log(newExpense)
-        setExpenses([...expenses, newExpense])
-
-        setAmount('')
-        setCategory('')
-        setDescription('')
-        setDate('')
+    const newExpense = {
+      id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+      amount: Number(amount),
+      category,
+      description: description.trim(),
+      date,
+      paymentMethod,
+      notes: notes.trim(),
+      recurringId: null,
+      recurringOccurrence: null
     }
 
+    setExpenses((previous) => [...previous, newExpense])
+
+    setAmount('')
+    setCategory('')
+    setDescription('')
+    setPaymentMethod('UPI')
+    setNotes('')
+    setDate(`${selectedMonth}-01`)
+  }
+
   return (
-    <>
-    <form onSubmit={handleSubmit}>
-        <h2>Add Expense</h2>
+    <section className="card form-card">
+      <div className="section-heading">
         <div>
-            <label>Amount</label>
-            <input
-  type="number"
-  placeholder="Enter amount"
-  value={amount}
-  onChange={(event) => setAmount(event.target.value)}
-/>
+          <h2>Add Expense</h2>
+          <p>Add a normal expense with payment details and notes.</p>
         </div>
-        <div>
-            <label>Category</label>
-            <select
-            value={category}
-                onChange={(event) => setCategory(event.target.value)}>
-                <option value="">Select category</option>
-                <option value="food">Food</option>
-                <option value="travel">Travel</option>
-                <option value="shopping">Shopping</option>
-                <option value="bills">Bills</option>
-                <option value="education">Education</option>
-                <option value="entertainment">Entertainment</option>
-                <option value="health">Health</option>
-                <option value="other">Other</option>
-                
-            </select>
-        </div>
-        <div>
-            <label>Description</label>
-            <input 
-                type="text" 
-                placeholder="What did you spend on?" 
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-            />
-        </div>
-        <div>
-            <label>Date</label>
-            <input type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)} 
-            />
+      </div>
+
+      <form className="form-grid" onSubmit={handleSubmit}>
+        <div className="field">
+          <label>Amount</label>
+          <input type="number" min="0.01" step="0.01" placeholder="Enter amount" value={amount}
+            onChange={(e) => setAmount(e.target.value)} />
         </div>
 
-        <button type="submit">Add Expense</button>
-    </form>
+        <div className="field">
+          <label>Category</label>
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">Select category</option>
+            {categories.map((item) => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </div>
 
-    <h2>Expenses</h2>
+        <div className="field">
+          <label>Description</label>
+          <input type="text" placeholder="What did you spend on?" value={description}
+            onChange={(e) => setDescription(e.target.value)} />
+        </div>
 
-{expenses.map((expense) => (
-  <div key={expense.id}>
-    <p>Amount: ₹{expense.amount}</p>
-    <p>Category: {expense.category}</p>
-    <p>Description: {expense.description}</p>
-    <p>Date: {expense.date}</p>
-  </div>
-))}
-</>
+        <div className="field">
+          <label>Date</label>
+          <input type="date" value={date} min={selectedMonth ? `${selectedMonth}-01` : undefined}
+            max={getLastDayOfMonth()} disabled={!selectedMonth}
+            onChange={(e) => setDate(e.target.value)} />
+        </div>
 
-)
+        <div className="field">
+          <label>Payment Method</label>
+          <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+            {PAYMENT_METHODS.map((method) => <option key={method}>{method}</option>)}
+          </select>
+        </div>
+
+        <div className="field field-full">
+          <label>Notes <span className="muted">(optional)</span></label>
+          <textarea rows="3" placeholder="Add any extra details..." value={notes}
+            onChange={(e) => setNotes(e.target.value)} />
+        </div>
+
+        <div className="field field-full">
+          <button className="primary-button" type="submit">Add Expense</button>
+        </div>
+      </form>
+    </section>
+  )
 }
 
 export default ExpenseForm
