@@ -2,40 +2,67 @@ import { useState } from 'react'
 
 import {
   addRecurringExpense,
+  addRecurringExpenseNow,
   deleteRecurringExpense,
   getRecurringExpenses,
   toggleRecurringExpense
 } from '../api'
 
-import {
-  todayString
-} from '../utils'
+
+const normalizeRecurring = (
+  item
+) => ({
+  ...item,
+
+  amount:
+    Number(item.amount),
+
+  startDate:
+    item.start_date ??
+    item.startDate,
+
+  nextDueDate:
+    item.next_due_date ??
+    item.nextDueDate,
+
+  lastGeneratedDate:
+    item.last_generated_date ??
+    item.lastGeneratedDate ??
+    null,
+
+  paymentMethod:
+    item.payment_method ??
+    item.paymentMethod ??
+    '',
+
+  active:
+    item.active !== false
+})
 
 
-function normalizeRecurring(item) {
-  return {
-    ...item,
+const normalizeExpense = (
+  expense
+) => ({
+  ...expense,
 
-    amount:
-      Number(item.amount),
+  amount:
+    Number(expense.amount),
 
-    startDate:
-      item.start_date ??
-      item.startDate,
+  paymentMethod:
+    expense.payment_method ??
+    expense.paymentMethod ??
+    '',
 
-    nextDueDate:
-      item.next_due_date ??
-      item.nextDueDate,
+  recurringId:
+    expense.recurring_id ??
+    expense.recurringId ??
+    null,
 
-    paymentMethod:
-      item.payment_method ??
-      item.paymentMethod ??
-      '',
-
-    active:
-      item.active !== false
-  }
-}
+  recurringDueDate:
+    expense.recurring_due_date ??
+    expense.recurringDueDate ??
+    null
+})
 
 
 function RecurringExpenses({
@@ -46,138 +73,157 @@ function RecurringExpenses({
   categories
 }) {
 
-  const [amount, setAmount] =
-    useState('')
+  const [
+    amount,
+    setAmount
+  ] = useState('')
 
-  const [category, setCategory] =
-    useState('')
+  const [
+    category,
+    setCategory
+  ] = useState('')
 
-  const [description, setDescription] =
-    useState('')
+  const [
+    description,
+    setDescription
+  ] = useState('')
 
-  const [startDate, setStartDate] =
-    useState('')
+  const [
+    startDate,
+    setStartDate
+  ] = useState('')
 
-  const [frequency, setFrequency] =
-    useState('monthly')
+  const [
+    frequency,
+    setFrequency
+  ] = useState('monthly')
 
-  const [saving, setSaving] =
-    useState(false)
+  const [
+    saving,
+    setSaving
+  ] = useState(false)
+
+  const [
+    processingId,
+    setProcessingId
+  ] = useState(null)
 
 
   /*
     -----------------------------------------
-    ADD RECURRING EXPENSE
+    CREATE RECURRING EXPENSE
     -----------------------------------------
   */
 
-  const handleAddRecurring = async (
-    event
-  ) => {
+  const handleAddRecurring =
+    async (event) => {
 
-    event.preventDefault()
+      event.preventDefault()
 
-    if (
-      !amount ||
-      Number(amount) <= 0
-    ) {
-      alert(
-        'Please enter a valid amount'
-      )
-      return
-    }
+      if (
+        !amount ||
+        Number(amount) <= 0
+      ) {
+        alert(
+          'Please enter a valid amount'
+        )
+        return
+      }
 
-    if (!category) {
-      alert(
-        'Please select a category'
-      )
-      return
-    }
+      if (!category) {
+        alert(
+          'Please select a category'
+        )
+        return
+      }
 
-    if (
-      !description.trim()
-    ) {
-      alert(
-        'Please enter a description'
-      )
-      return
-    }
+      if (
+        !description.trim()
+      ) {
+        alert(
+          'Please enter a description'
+        )
+        return
+      }
 
-    if (!startDate) {
-      alert(
-        'Please select a start date'
-      )
-      return
-    }
-
-    try {
-
-      setSaving(true)
-
-      const response =
-        await addRecurringExpense({
-          amount:
-            Number(amount),
-
-          category,
-
-          description:
-            description.trim(),
-
-          notes:
-            '',
-
-          paymentMethod:
-            'UPI',
-
-          startDate,
-
-          frequency
-        })
+      if (!startDate) {
+        alert(
+          'Please select a start date'
+        )
+        return
+      }
 
 
-      const newRecurring =
-        normalizeRecurring(
-          response.recurringExpense
+      try {
+
+        setSaving(true)
+
+
+        const response =
+          await addRecurringExpense({
+            amount:
+              Number(amount),
+
+            category,
+
+            description:
+              description.trim(),
+
+            notes:
+              '',
+
+            paymentMethod:
+              'UPI',
+
+            startDate,
+
+            frequency
+          })
+
+
+        const newRecurring =
+          normalizeRecurring(
+            response.recurringExpense
+          )
+
+
+        setRecurringExpenses(
+          (previous) => [
+            ...previous,
+            newRecurring
+          ]
         )
 
 
-      setRecurringExpenses(
-        (previous) => [
-          ...previous,
-          newRecurring
-        ]
-      )
+        setAmount('')
+        setCategory('')
+        setDescription('')
+        setStartDate('')
+        setFrequency('monthly')
 
 
-      setAmount('')
-      setCategory('')
-      setDescription('')
-      setStartDate('')
-      setFrequency('monthly')
+        alert(
+          'Recurring expense saved successfully.'
+        )
 
-      alert(
-        'Recurring expense saved successfully.'
-      )
+      } catch (error) {
 
-    } catch (error) {
+        alert(
+          error.message ||
+          'Failed to save recurring expense'
+        )
 
-      alert(
-        error.message ||
-        'Failed to save recurring expense'
-      )
+      } finally {
 
-    } finally {
+        setSaving(false)
 
-      setSaving(false)
-
+      }
     }
-  }
 
 
   /*
     -----------------------------------------
-    ADD OCCURRENCE MANUALLY
+    ADD NEXT SCHEDULED OCCURRENCE
     -----------------------------------------
   */
 
@@ -185,138 +231,109 @@ function RecurringExpenses({
     recurring
   ) => {
 
-    const today =
-      todayString()
+    try {
+
+      setProcessingId(
+        recurring.id
+      )
 
 
-    const alreadyExists =
-      expenses.some(
-        (expense) =>
-          String(
-            expense.recurringId
-          ) ===
-          String(
-            recurring.id
-          ) &&
-          (
-            expense.recurringDueDate ===
-              today ||
-            expense.recurringOccurrence ===
-              today
+      /*
+        Backend decides the date.
+
+        It uses:
+        recurring.next_due_date
+
+        NOT today's date.
+      */
+
+      const response =
+        await addRecurringExpenseNow(
+          recurring.id
+        )
+
+
+      const newExpense =
+        normalizeExpense(
+          response.expense
+        )
+
+
+      setExpenses(
+        (previous) => {
+
+          const exists =
+            previous.some(
+              (item) =>
+                String(item.id) ===
+                String(newExpense.id)
+            )
+
+          if (exists) {
+            return previous
+          }
+
+          return [
+            ...previous,
+            newExpense
+          ]
+        }
+      )
+
+
+      /*
+        Backend has already moved
+        next_due_date forward.
+      */
+
+      setRecurringExpenses(
+        (previous) =>
+          previous.map(
+            (item) => {
+
+              if (
+                String(item.id) !==
+                String(recurring.id)
+              ) {
+                return item
+              }
+
+
+              return {
+                ...item,
+
+                nextDueDate:
+                  response
+                    .recurringExpense
+                    .next_due_date,
+
+                lastGeneratedDate:
+                  response
+                    .recurringExpense
+                    .last_generated_date
+              }
+            }
           )
       )
 
 
-    if (alreadyExists) {
-
       alert(
-        'This recurring expense has already been added today.'
-      )
-
-      return
-    }
-
-
-    try {
-
-      /*
-        We are adding the expense through
-        the backend, so it survives refresh.
-      */
-
-      const response =
-        await fetch(
-          `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/expenses`,
-          {
-            method: 'POST',
-
-            headers: {
-              'Content-Type':
-                'application/json',
-
-              Authorization:
-                `Bearer ${localStorage.getItem('token')}`
-            },
-
-            body: JSON.stringify({
-              amount:
-                Number(
-                  recurring.amount
-                ),
-
-              category:
-                recurring.category,
-
-              description:
-                recurring.description,
-
-              date:
-                today,
-
-              notes:
-                'Manually added recurring expense',
-
-              paymentMethod:
-                recurring.paymentMethod ||
-                'UPI'
-            })
-          }
-        )
-
-
-      const data =
-        await response.json()
-
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-          'Failed to add expense'
-        )
-      }
-
-
-      const newExpense = {
-        ...data.expense,
-
-        amount:
-          Number(
-            data.expense.amount
-          ),
-
-        paymentMethod:
-          data.expense.payment_method ||
-          'UPI',
-
-        recurringId:
-          recurring.id,
-
-        recurringDueDate:
-          today,
-
-        recurringOccurrence:
-          today
-      }
-
-
-      setExpenses(
-        (previous) => [
-          ...previous,
-          newExpense
-        ]
-      )
-
-
-      alert(
-        'Expense added successfully.'
+        `Expense added for ${newExpense.date}.`
       )
 
     } catch (error) {
 
       alert(
         error.message ||
-        'Failed to add expense'
+        'Failed to add recurring expense'
       )
+
+    } finally {
+
+      setProcessingId(
+        null
+      )
+
     }
   }
 
@@ -328,7 +345,9 @@ function RecurringExpenses({
   */
 
   const toggleActive =
-    async (recurring) => {
+    async (
+      recurring
+    ) => {
 
       try {
 
@@ -342,8 +361,8 @@ function RecurringExpenses({
           (previous) =>
             previous.map(
               (item) =>
-                item.id ===
-                  recurring.id
+                String(item.id) ===
+                String(recurring.id)
                   ? {
                       ...item,
 
@@ -362,6 +381,7 @@ function RecurringExpenses({
           error.message ||
           'Failed to update recurring expense'
         )
+
       }
     }
 
@@ -384,6 +404,7 @@ function RecurringExpenses({
         return
       }
 
+
       try {
 
         await deleteRecurringExpense(
@@ -395,7 +416,8 @@ function RecurringExpenses({
           (previous) =>
             previous.filter(
               (item) =>
-                item.id !== id
+                String(item.id) !==
+                String(id)
             )
         )
 
@@ -423,6 +445,7 @@ function RecurringExpenses({
         const data =
           await getRecurringExpenses()
 
+
         setRecurringExpenses(
           data.map(
             normalizeRecurring
@@ -435,15 +458,10 @@ function RecurringExpenses({
           error.message ||
           'Failed to refresh recurring expenses'
         )
+
       }
     }
 
-
-  /*
-    -----------------------------------------
-    UI
-    -----------------------------------------
-  */
 
   return (
     <section className="card recurring-expenses">
@@ -457,16 +475,20 @@ function RecurringExpenses({
           </h2>
 
           <p>
-            Recurring expenses are generated
-            automatically when their due date arrives.
+            Each recurring expense uses its
+            scheduled due date when an occurrence
+            is added.
           </p>
 
         </div>
 
+
         <button
           type="button"
           className="secondary-button"
-          onClick={refreshRecurring}
+          onClick={
+            refreshRecurring
+          }
         >
           Refresh
         </button>
@@ -524,12 +546,14 @@ function RecurringExpenses({
 
             {categories.map(
               (item) => (
+
                 <option
                   key={item}
                   value={item}
                 >
                   {item}
                 </option>
+
               )
             )}
 
@@ -676,6 +700,7 @@ function RecurringExpenses({
 
                     </div>
 
+
                     <strong>
                       ₹
                       {Number(
@@ -710,17 +735,34 @@ function RecurringExpenses({
                   </p>
 
 
+                  {expense.lastGeneratedDate && (
+                    <p>
+                      <b>
+                        Last Added:
+                      </b>{' '}
+                      {expense.lastGeneratedDate}
+                    </p>
+                  )}
+
+
                   <div className="card-actions">
 
                     <button
                       className="success-button"
+                      disabled={
+                        processingId ===
+                        expense.id
+                      }
                       onClick={() =>
                         addNow(
                           expense
                         )
                       }
                     >
-                      Add Now
+                      {processingId ===
+                      expense.id
+                        ? 'Adding...'
+                        : 'Add Now'}
                     </button>
 
 
