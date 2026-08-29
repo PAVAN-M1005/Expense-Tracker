@@ -138,64 +138,64 @@ const getNextDate = (
   -----------------------------------------
 */
 
-router.get('/', async (
-  req,
-  res
-) => {
+router.get(
+  '/',
+  async (req, res) => {
 
-  try {
+    try {
 
-    const result =
-      await pool.query(
-        `SELECT
-          id,
-          amount,
-          category,
-          description,
-          notes,
-          payment_method,
-          TO_CHAR(
-            start_date,
-            'YYYY-MM-DD'
-          ) AS start_date,
-          TO_CHAR(
-            next_due_date,
-            'YYYY-MM-DD'
-          ) AS next_due_date,
-          frequency,
-          active,
-          TO_CHAR(
-            last_generated_date,
-            'YYYY-MM-DD'
-          ) AS last_generated_date,
-          created_at,
-          updated_at
-         FROM recurring_expenses
-         WHERE user_id = $1
-         ORDER BY
-           next_due_date ASC,
-           id ASC`,
-        [req.user.id]
+      const result =
+        await pool.query(
+          `SELECT
+            id,
+            amount,
+            category,
+            description,
+            notes,
+            payment_method,
+            TO_CHAR(
+              start_date,
+              'YYYY-MM-DD'
+            ) AS start_date,
+            TO_CHAR(
+              next_due_date,
+              'YYYY-MM-DD'
+            ) AS next_due_date,
+            frequency,
+            active,
+            TO_CHAR(
+              last_generated_date,
+              'YYYY-MM-DD'
+            ) AS last_generated_date,
+            created_at,
+            updated_at
+           FROM recurring_expenses
+           WHERE user_id = $1
+           ORDER BY
+             next_due_date ASC,
+             id ASC`,
+          [req.user.id]
+        )
+
+      res.json(
+        result.rows
       )
 
-    res.json(
-      result.rows
-    )
+    } catch (error) {
 
-  } catch (error) {
+      console.error(
+        'Get recurring error:',
+        error
+      )
 
-    console.error(
-      'Get recurring error:',
-      error
-    )
+      res.status(500).json({
+        message:
+          'Failed to fetch recurring expenses'
+      })
 
-    res.status(500).json({
-      message:
-        'Failed to fetch recurring expenses'
-    })
-
+    }
   }
-})
+)
 
 
 /*
@@ -204,209 +204,208 @@ router.get('/', async (
   -----------------------------------------
 */
 
-router.post('/', async (
-  req,
-  res
-) => {
+router.post(
+  '/',
+  async (req, res) => {
 
-  try {
+    try {
 
-    const {
-      amount,
-      category,
-      description,
-      notes,
-      paymentMethod,
-      startDate,
-      frequency
-    } = req.body
-
-
-    if (
-      amount === undefined ||
-      !category ||
-      !description ||
-      !startDate ||
-      !frequency
-    ) {
-
-      return res.status(400).json({
-        message:
-          'Amount, category, description, startDate and frequency are required'
-      })
-
-    }
-
-
-    const numericAmount =
-      Number(amount)
-
-
-    if (
-      !Number.isFinite(
-        numericAmount
-      ) ||
-      numericAmount <= 0
-    ) {
-
-      return res.status(400).json({
-        message:
-          'Amount must be greater than 0'
-      })
-
-    }
-
-
-    if (
-      ![
-        'weekly',
-        'monthly',
-        'yearly'
-      ].includes(
+      const {
+        amount,
+        category,
+        description,
+        notes,
+        paymentMethod,
+        startDate,
         frequency
-      )
-    ) {
-
-      return res.status(400).json({
-        message:
-          'Invalid recurring frequency'
-      })
-
-    }
+      } = req.body
 
 
-    const cleanCategory =
-      String(category).trim()
+      if (
+        amount === undefined ||
+        !category ||
+        !description ||
+        !startDate ||
+        !frequency
+      ) {
 
-    const cleanDescription =
-      String(description).trim()
+        return res.status(400).json({
+          message:
+            'Amount, category, description, startDate and frequency are required'
+        })
 
-
-    const duplicate =
-      await pool.query(
-        `SELECT id
-         FROM recurring_expenses
-         WHERE user_id = $1
-           AND amount = $2
-           AND category = $3
-           AND LOWER(description) =
-               LOWER($4)
-           AND start_date = $5
-           AND frequency = $6`,
-        [
-          req.user.id,
-          numericAmount,
-          cleanCategory,
-          cleanDescription,
-          startDate,
-          frequency
-        ]
-      )
+      }
 
 
-    if (
-      duplicate.rows.length > 0
-    ) {
-
-      return res.status(409).json({
-        message:
-          'This recurring expense already exists'
-      })
-
-    }
+      const numericAmount =
+        Number(amount)
 
 
-    const result =
-      await pool.query(
-        `INSERT INTO recurring_expenses (
-          user_id,
-          amount,
-          category,
-          description,
-          notes,
-          payment_method,
-          start_date,
-          next_due_date,
-          frequency,
-          active
+      if (
+        !Number.isFinite(
+          numericAmount
+        ) ||
+        numericAmount <= 0
+      ) {
+
+        return res.status(400).json({
+          message:
+            'Amount must be greater than 0'
+        })
+
+      }
+
+
+      if (
+        ![
+          'weekly',
+          'monthly',
+          'yearly'
+        ].includes(frequency)
+      ) {
+
+        return res.status(400).json({
+          message:
+            'Invalid recurring frequency'
+        })
+
+      }
+
+
+      const cleanCategory =
+        String(category).trim()
+
+      const cleanDescription =
+        String(description).trim()
+
+
+      const duplicate =
+        await pool.query(
+          `SELECT
+             id
+           FROM recurring_expenses
+           WHERE user_id = $1
+             AND amount = $2
+             AND category = $3
+             AND LOWER(description) =
+                 LOWER($4)
+             AND start_date = $5
+             AND frequency = $6`,
+          [
+            req.user.id,
+            numericAmount,
+            cleanCategory,
+            cleanDescription,
+            startDate,
+            frequency
+          ]
         )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          $7,
-          $7,
-          $8,
-          TRUE
-        )
-        RETURNING
-          id,
-          amount,
-          category,
-          description,
-          notes,
-          payment_method,
-          TO_CHAR(
+
+
+      if (
+        duplicate.rows.length > 0
+      ) {
+
+        return res.status(409).json({
+          message:
+            'This recurring expense already exists'
+        })
+
+      }
+
+
+      const result =
+        await pool.query(
+          `INSERT INTO recurring_expenses (
+            user_id,
+            amount,
+            category,
+            description,
+            notes,
+            payment_method,
             start_date,
-            'YYYY-MM-DD'
-          ) AS start_date,
-          TO_CHAR(
             next_due_date,
-            'YYYY-MM-DD'
-          ) AS next_due_date,
-          frequency,
-          active,
-          created_at,
-          updated_at`,
-        [
-          req.user.id,
-          numericAmount,
-          cleanCategory,
-          cleanDescription,
-          notes
-            ? String(notes).trim()
-            : null,
-          paymentMethod
-            ? String(
-                paymentMethod
-              ).trim()
-            : null,
-          startDate,
-          frequency
-        ]
+            frequency,
+            active
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $7,
+            $8,
+            TRUE
+          )
+          RETURNING
+            id,
+            amount,
+            category,
+            description,
+            notes,
+            payment_method,
+            TO_CHAR(
+              start_date,
+              'YYYY-MM-DD'
+            ) AS start_date,
+            TO_CHAR(
+              next_due_date,
+              'YYYY-MM-DD'
+            ) AS next_due_date,
+            frequency,
+            active,
+            created_at,
+            updated_at`,
+          [
+            req.user.id,
+            numericAmount,
+            cleanCategory,
+            cleanDescription,
+            notes
+              ? String(notes).trim()
+              : null,
+            paymentMethod
+              ? String(
+                  paymentMethod
+                ).trim()
+              : null,
+            startDate,
+            frequency
+          ]
+        )
+
+
+      res.status(201).json({
+        message:
+          'Recurring expense created successfully',
+
+        recurringExpense:
+          result.rows[0]
+      })
+
+    } catch (error) {
+
+      console.error(
+        'Create recurring error:',
+        error
       )
 
+      res.status(500).json({
+        message:
+          'Failed to create recurring expense'
+      })
 
-    res.status(201).json({
-      message:
-        'Recurring expense created successfully',
-
-      recurringExpense:
-        result.rows[0]
-    })
-
-  } catch (error) {
-
-    console.error(
-      'Create recurring error:',
-      error
-    )
-
-    res.status(500).json({
-      message:
-        'Failed to create recurring expense'
-    })
-
+    }
   }
-})
+)
 
 
 /*
   -----------------------------------------
-  ADD NEXT DUE OCCURRENCE
+  ADD NEXT SCHEDULED OCCURRENCE
   -----------------------------------------
 */
 
@@ -419,12 +418,14 @@ router.post(
 
     try {
 
-      const id =
+      const recurringId =
         Number(req.params.id)
 
 
       if (
-        !Number.isInteger(id)
+        !Number.isInteger(
+          recurringId
+        )
       ) {
 
         return res.status(400).json({
@@ -440,6 +441,14 @@ router.post(
       )
 
 
+      /*
+        Lock the recurring row.
+
+        This prevents two Add Now requests
+        from creating the same occurrence
+        at the same time.
+      */
+
       const recurringResult =
         await client.query(
           `SELECT
@@ -451,6 +460,10 @@ router.post(
             notes,
             payment_method,
             TO_CHAR(
+              start_date,
+              'YYYY-MM-DD'
+            ) AS start_date,
+            TO_CHAR(
               next_due_date,
               'YYYY-MM-DD'
             ) AS next_due_date,
@@ -461,7 +474,7 @@ router.post(
              AND user_id = $2
            FOR UPDATE`,
           [
-            id,
+            recurringId,
             req.user.id
           ]
         )
@@ -504,23 +517,33 @@ router.post(
       }
 
 
+      /*
+        IMPORTANT:
+        Add Now uses the recurring schedule.
+
+        It does NOT use today's date.
+
+        Example:
+        next_due_date = 2026-09-01
+
+        Even if the user clicks Add Now
+        on 2026-08-29, the expense date
+        will be 2026-09-01.
+      */
+
       const dueDate =
         recurring.next_due_date
 
 
       /*
-        Check whether the scheduled
-        occurrence already exists.
-
-        If the user deleted it, this
-        query returns no rows and it
-        can be recreated.
+        Check whether this exact
+        scheduled occurrence already exists.
       */
 
       const existingExpense =
         await client.query(
           `SELECT
-            id
+             id
            FROM expenses
            WHERE user_id = $1
              AND recurring_id = $2
@@ -535,8 +558,7 @@ router.post(
 
 
       if (
-        existingExpense.rows.length >
-        0
+        existingExpense.rows.length > 0
       ) {
 
         await client.query(
@@ -545,11 +567,16 @@ router.post(
 
         return res.status(409).json({
           message:
-            'This recurring expense has already been added for its current due date.'
+            `This recurring expense has already been added for ${dueDate}.`
         })
 
       }
 
+
+      /*
+        Create the expense using
+        the scheduled recurring date.
+      */
 
       const expenseResult =
         await client.query(
@@ -600,14 +627,31 @@ router.post(
             ),
             recurring.category,
             recurring.description,
+
+            /*
+              Scheduled date
+            */
             dueDate,
+
             recurring.notes,
             recurring.payment_method,
+
+            /*
+              Link to recurring rule
+            */
             recurring.id,
+
+            /*
+              Same scheduled date
+            */
             dueDate
           ]
         )
 
+
+      /*
+        Advance the recurring schedule.
+      */
 
       const nextDueDate =
         getNextDate(
@@ -620,17 +664,25 @@ router.post(
         `UPDATE recurring_expenses
          SET
            next_due_date = $1,
-           last_generated_date = CURRENT_DATE,
+           last_generated_date = $2,
            updated_at = CURRENT_TIMESTAMP
-         WHERE id = $2
-           AND user_id = $3`,
+         WHERE id = $3
+           AND user_id = $4`,
         [
           nextDueDate,
+          dueDate,
           recurring.id,
           req.user.id
         ]
       )
 
+
+      /*
+        Create notification.
+
+        reference_key prevents duplicate
+        notifications for the same occurrence.
+      */
 
       const referenceKey =
         `recurring-${recurring.id}-${dueDate}`
@@ -638,7 +690,8 @@ router.post(
 
       const existingNotification =
         await client.query(
-          `SELECT id
+          `SELECT
+             id
            FROM notifications
            WHERE user_id = $1
              AND reference_key = $2
@@ -678,9 +731,7 @@ router.post(
             'Recurring Expense Added',
             `${recurring.description} of ₹${Number(
               recurring.amount
-            ).toFixed(
-              2
-            )} was added for ${dueDate}.`,
+            ).toFixed(2)} was added for ${dueDate}.`,
             referenceKey
           ]
         )
@@ -693,18 +744,27 @@ router.post(
       )
 
 
+      console.log(
+        `Recurring expense manually added: ${recurring.description} - ${dueDate} (expense ${expenseResult.rows[0].id})`
+      )
+
+
       res.status(201).json({
 
         message:
-          'Recurring expense added successfully',
+          `Recurring expense added for ${dueDate}.`,
 
         expense:
           expenseResult.rows[0],
 
         recurringExpense: {
           ...recurring,
+
           next_due_date:
-            nextDueDate
+            nextDueDate,
+
+          last_generated_date:
+            dueDate
         }
 
       })
@@ -792,6 +852,41 @@ router.put(
       }
 
 
+      if (
+        ![
+          'weekly',
+          'monthly',
+          'yearly'
+        ].includes(frequency)
+      ) {
+
+        return res.status(400).json({
+          message:
+            'Invalid recurring frequency'
+        })
+
+      }
+
+
+      const numericAmount =
+        Number(amount)
+
+
+      if (
+        !Number.isFinite(
+          numericAmount
+        ) ||
+        numericAmount <= 0
+      ) {
+
+        return res.status(400).json({
+          message:
+            'Amount must be greater than 0'
+        })
+
+      }
+
+
       const result =
         await pool.query(
           `UPDATE recurring_expenses
@@ -832,14 +927,16 @@ router.put(
              created_at,
              updated_at`,
           [
-            Number(amount),
+            numericAmount,
             String(category).trim(),
             String(description).trim(),
             notes
               ? String(notes).trim()
               : null,
             paymentMethod
-              ? String(paymentMethod).trim()
+              ? String(
+                  paymentMethod
+                ).trim()
               : null,
             startDate,
             nextDueDate,
@@ -852,8 +949,7 @@ router.put(
 
 
       if (
-        result.rows.length ===
-        0
+        result.rows.length === 0
       ) {
 
         return res.status(404).json({
@@ -931,8 +1027,7 @@ router.delete(
 
 
       if (
-        result.rows.length ===
-        0
+        result.rows.length === 0
       ) {
 
         return res.status(404).json({
@@ -1015,8 +1110,7 @@ router.patch(
 
 
       if (
-        result.rows.length ===
-        0
+        result.rows.length === 0
       ) {
 
         return res.status(404).json({
@@ -1052,5 +1146,4 @@ router.patch(
 )
 
 
-module.exports =
-  router
+module.exports = router
