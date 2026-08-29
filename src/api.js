@@ -131,16 +131,16 @@ export const getRecurringExpenses =
     return request('/recurring')
   }
 
-export const addRecurringExpense =
-  async (recurringExpense) => {
-    return request('/recurring', {
-      method: 'POST',
-      body: JSON.stringify(
-        recurringExpense
-      )
-    })
+export const addRecurringExpenseNow =
+  async (id) => {
+    return request(
+      `/recurring/${id}/add-now`,
+      {
+        method: 'POST'
+      }
+    )
   }
-
+  
 export const updateRecurringExpense =
   async (id, recurringExpense) => {
     return request(
