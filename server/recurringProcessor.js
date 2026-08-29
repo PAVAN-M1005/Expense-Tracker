@@ -1,371 +1,838 @@
-const pool = require('./db')
+import { useState } from 'react'
 
-const getLocalDateString = (date = new Date()) => {
-  const year = date.getFullYear()
+import {
+  addRecurringExpense,
+  deleteRecurringExpense,
+  getRecurringExpenses,
+  toggleRecurringExpense
+} from '../api'
 
-  const month = String(
-    date.getMonth() + 1
-  ).padStart(2, '0')
 
-  const day = String(
-    date.getDate()
-  ).padStart(2, '0')
+const normalizeRecurring = (
+  item
+) => ({
+  ...item,
 
-  return `${year}-${month}-${day}`
-}
+  amount:
+    Number(item.amount),
 
-const addDays = (dateString, days) => {
-  const [year, month, day] =
-    dateString.split('-').map(Number)
+  startDate:
+    item.start_date ??
+    item.startDate,
 
-  const date = new Date(
-    year,
-    month - 1,
-    day
-  )
+  nextDueDate:
+    item.next_due_date ??
+    item.nextDueDate,
 
-  date.setDate(
-    date.getDate() + days
-  )
+  paymentMethod:
+    item.payment_method ??
+    item.paymentMethod ??
+    '',
 
-  return getLocalDateString(date)
-}
+  active:
+    item.active !== false
+})
 
-const addMonths = (dateString, months) => {
-  const [year, month, day] =
-    dateString.split('-').map(Number)
 
-  const date = new Date(
-    year,
-    month - 1,
-    day
-  )
+const normalizeExpense = (
+  expense
+) => ({
+  ...expense,
 
-  const originalDay = date.getDate()
+  amount:
+    Number(expense.amount),
 
-  date.setDate(1)
+  paymentMethod:
+    expense.payment_method ??
+    expense.paymentMethod ??
+    '',
 
-  date.setMonth(
-    date.getMonth() + months
-  )
+  recurringId:
+    expense.recurring_id ??
+    expense.recurringId ??
+    null,
 
-  const lastDay = new Date(
-    date.getFullYear(),
-    date.getMonth() + 1,
-    0
-  ).getDate()
+  recurringDueDate:
+    expense.recurring_due_date ??
+    expense.recurringDueDate ??
+    null
+})
 
-  date.setDate(
-    Math.min(originalDay, lastDay)
-  )
 
-  return getLocalDateString(date)
-}
+function RecurringExpenses({
+  recurringExpenses,
+  setRecurringExpenses,
+  expenses,
+  setExpenses,
+  categories
+}) {
 
-const getNextDate = (
-  dateString,
-  frequency
-) => {
-  if (frequency === 'weekly') {
-    return addDays(
-      dateString,
-      7
-    )
-  }
+  const [
+    amount,
+    setAmount
+  ] = useState('')
 
-  if (frequency === 'yearly') {
-    return addMonths(
-      dateString,
-      12
-    )
-  }
+  const [
+    category,
+    setCategory
+  ] = useState('')
 
-  return addMonths(
-    dateString,
-    1
-  )
-}
+  const [
+    description,
+    setDescription
+  ] = useState('')
 
-const processRecurringExpenses = async () => {
-  const today =
-    getLocalDateString()
+  const [
+    startDate,
+    setStartDate
+  ] = useState('')
 
-  try {
-    const dueResult =
-      await pool.query(
-        `SELECT
-          id,
-          user_id,
-          amount,
+  const [
+    frequency,
+    setFrequency
+  ] = useState('monthly')
+
+  const [
+    saving,
+    setSaving
+  ] = useState(false)
+
+  const [
+    processingId,
+    setProcessingId
+  ] = useState(null)
+
+
+  /*
+    -----------------------------------------
+    CREATE RECURRING RULE
+    -----------------------------------------
+  */
+
+  const handleAddRecurring = async (
+    event
+  ) => {
+
+    event.preventDefault()
+
+    if (
+      !amount ||
+      Number(amount) <= 0
+    ) {
+      alert(
+        'Please enter a valid amount'
+      )
+      return
+    }
+
+    if (!category) {
+      alert(
+        'Please select a category'
+      )
+      return
+    }
+
+    if (
+      !description.trim()
+    ) {
+      alert(
+        'Please enter a description'
+      )
+      return
+    }
+
+    if (!startDate) {
+      alert(
+        'Please select a start date'
+      )
+      return
+    }
+
+
+    try {
+
+      setSaving(true)
+
+      const response =
+        await addRecurringExpense({
+          amount:
+            Number(amount),
+
           category,
-          description,
-          notes,
-          payment_method,
-          TO_CHAR(
-            next_due_date,
-            'YYYY-MM-DD'
-          ) AS next_due_date,
-          frequency,
-          active
-         FROM recurring_expenses
-         WHERE active = TRUE
-           AND next_due_date <= CURRENT_DATE
-         ORDER BY next_due_date ASC`
+
+          description:
+            description.trim(),
+
+          notes:
+            '',
+
+          paymentMethod:
+            'UPI',
+
+          startDate,
+
+          frequency
+        })
+
+
+      const newRecurring =
+        normalizeRecurring(
+          response.recurringExpense
+        )
+
+
+      setRecurringExpenses(
+        (previous) => [
+          ...previous,
+          newRecurring
+        ]
       )
 
-    for (
-      const recurring of dueResult.rows
-    ) {
-      const client =
-        await pool.connect()
 
-      try {
-        await client.query(
-          'BEGIN'
+      setAmount('')
+      setCategory('')
+      setDescription('')
+      setStartDate('')
+      setFrequency('monthly')
+
+      alert(
+        'Recurring expense saved successfully.'
+      )
+
+    } catch (error) {
+
+      alert(
+        error.message ||
+        'Failed to save recurring expense'
+      )
+
+    } finally {
+
+      setSaving(false)
+
+    }
+  }
+
+
+  /*
+    -----------------------------------------
+    ADD NEXT DUE OCCURRENCE
+    -----------------------------------------
+  */
+
+  const addNow = async (
+    recurring
+  ) => {
+
+    try {
+
+      setProcessingId(
+        recurring.id
+      )
+
+
+      const token =
+        localStorage.getItem(
+          'token'
         )
 
-        /*
-          Lock this recurring record so that
-          only one processor can handle it
-          at a time.
-        */
 
-        const lockedResult =
-          await client.query(
-            `SELECT
-              id,
-              user_id,
-              amount,
-              category,
-              description,
-              notes,
-              payment_method,
-              TO_CHAR(
-                next_due_date,
-                'YYYY-MM-DD'
-              ) AS next_due_date,
-              frequency,
-              active
-             FROM recurring_expenses
-             WHERE id = $1
-             FOR UPDATE`,
-            [recurring.id]
-          )
+      const API_URL =
+        import.meta.env
+          .VITE_API_URL ||
+        'http://localhost:5000/api'
 
-        if (
-          lockedResult.rows.length === 0
-        ) {
-          await client.query(
-            'ROLLBACK'
-          )
 
-          continue
-        }
+      const response =
+        await fetch(
+          `${API_URL}/recurring/${recurring.id}/add-now`,
+          {
+            method: 'POST',
 
-        const current =
-          lockedResult.rows[0]
+            headers: {
+              'Content-Type':
+                'application/json',
 
-        if (
-          current.active === false
-        ) {
-          await client.query(
-            'ROLLBACK'
-          )
-
-          continue
-        }
-
-        let dueDate =
-          current.next_due_date
-
-        while (
-          dueDate <= today
-        ) {
-          /*
-            Check whether this exact
-            recurring occurrence already exists.
-          */
-
-          const existingExpense =
-            await client.query(
-              `SELECT id
-               FROM expenses
-               WHERE recurring_id = $1
-                 AND recurring_due_date = $2
-               LIMIT 1`,
-              [
-                current.id,
-                dueDate
-              ]
-            )
-
-          /*
-            Only insert when the occurrence
-            does not already exist.
-          */
-
-          if (
-            existingExpense.rows.length === 0
-          ) {
-            const insertedExpense =
-              await client.query(
-                `INSERT INTO expenses (
-                  user_id,
-                  amount,
-                  category,
-                  description,
-                  date,
-                  notes,
-                  payment_method,
-                  recurring_id,
-                  recurring_due_date
-                )
-                VALUES (
-                  $1,
-                  $2,
-                  $3,
-                  $4,
-                  $5,
-                  $6,
-                  $7,
-                  $8,
-                  $9
-                )
-                RETURNING id`,
-                [
-                  current.user_id,
-                  Number(
-                    current.amount
-                  ),
-                  current.category,
-                  current.description,
-                  dueDate,
-                  current.notes,
-                  current.payment_method,
-                  current.id,
-                  dueDate
-                ]
-              )
-
-            /*
-              Create a notification only
-              after the expense was actually
-              inserted.
-            */
-
-            const referenceKey =
-              `recurring-${current.id}-${dueDate}`
-
-            const existingNotification =
-              await client.query(
-                `SELECT id
-                 FROM notifications
-                 WHERE user_id = $1
-                   AND reference_key = $2
-                 LIMIT 1`,
-                [
-                  current.user_id,
-                  referenceKey
-                ]
-              )
-
-            if (
-              existingNotification.rows.length === 0
-            ) {
-              await client.query(
-                `INSERT INTO notifications (
-                  user_id,
-                  type,
-                  title,
-                  message,
-                  reference_key,
-                  read
-                )
-                VALUES (
-                  $1,
-                  $2,
-                  $3,
-                  $4,
-                  $5,
-                  FALSE
-                )`,
-                [
-                  current.user_id,
-                  'recurring',
-                  'Recurring Expense Added',
-                  `${current.description} of ₹${Number(
-                    current.amount
-                  ).toFixed(
-                    2
-                  )} was automatically added for ${dueDate}.`,
-                  referenceKey
-                ]
-              )
+              Authorization:
+                `Bearer ${token}`
             }
+          }
+        )
 
-            console.log(
-              `Recurring expense added: ${current.description} - ${dueDate} (expense ${insertedExpense.rows[0].id})`
+
+      const data =
+        await response.json()
+
+
+      if (
+        !response.ok
+      ) {
+        throw new Error(
+          data.message ||
+          'Failed to add recurring expense'
+        )
+      }
+
+
+      /*
+        Add the actual database
+        expense returned by backend.
+      */
+
+      const newExpense =
+        normalizeExpense(
+          data.expense
+        )
+
+
+      setExpenses(
+        (previous) => {
+
+          const exists =
+            previous.some(
+              (item) =>
+                String(
+                  item.id
+                ) ===
+                String(
+                  newExpense.id
+                )
             )
-          } else {
-            console.log(
-              `Recurring occurrence already exists: ${current.description} - ${dueDate}`
-            )
+
+          if (exists) {
+            return previous
           }
 
-          /*
-            Move to the next occurrence.
-          */
-
-          dueDate =
-            getNextDate(
-              dueDate,
-              current.frequency
-            )
-        }
-
-        /*
-          Store the next future date.
-        */
-
-        await client.query(
-          `UPDATE recurring_expenses
-           SET
-             next_due_date = $1,
-             last_generated_date = CURRENT_DATE,
-             updated_at = CURRENT_TIMESTAMP
-           WHERE id = $2`,
-          [
-            dueDate,
-            current.id
+          return [
+            ...previous,
+            newExpense
           ]
-        )
+        }
+      )
 
-        await client.query(
-          'COMMIT'
+
+      /*
+        Backend has already advanced
+        next_due_date.
+      */
+
+      setRecurringExpenses(
+        (previous) =>
+          previous.map(
+            (item) => {
+
+              if (
+                String(
+                  item.id
+                ) !==
+                String(
+                  recurring.id
+                )
+              ) {
+                return item
+              }
+
+              return {
+                ...item,
+
+                nextDueDate:
+                  data
+                    .recurringExpense
+                    .next_due_date,
+
+                lastGeneratedDate:
+                  new Date()
+                    .toISOString()
+                    .split('T')[0]
+              }
+            }
+          )
+      )
+
+
+      alert(
+        `Expense added for ${newExpense.date}.`
+      )
+
+    } catch (error) {
+
+      alert(
+        error.message ||
+        'Failed to add recurring expense'
+      )
+
+    } finally {
+
+      setProcessingId(
+        null
+      )
+
+    }
+  }
+
+
+  /*
+    -----------------------------------------
+    PAUSE / RESUME
+    -----------------------------------------
+  */
+
+  const toggleActive =
+    async (
+      recurring
+    ) => {
+
+      try {
+
+        const response =
+          await toggleRecurringExpense(
+            recurring.id
+          )
+
+
+        setRecurringExpenses(
+          (previous) =>
+            previous.map(
+              (item) =>
+                String(
+                  item.id
+                ) ===
+                String(
+                  recurring.id
+                )
+                  ? {
+                      ...item,
+
+                      active:
+                        response
+                          .recurringExpense
+                          .active
+                    }
+                  : item
+            )
         )
 
       } catch (error) {
-        await client.query(
-          'ROLLBACK'
+
+        alert(
+          error.message ||
+          'Failed to update recurring expense'
         )
 
-        console.error(
-          `Failed processing recurring expense ${recurring.id}:`,
-          error
-        )
-
-      } finally {
-        client.release()
       }
     }
 
-  } catch (error) {
-    console.error(
-      'Recurring processor error:',
-      error
-    )
-  }
+
+  /*
+    -----------------------------------------
+    DELETE RECURRING RULE
+    -----------------------------------------
+  */
+
+  const deleteRecurring =
+    async (id) => {
+
+      const confirmed =
+        window.confirm(
+          'Delete this recurring expense template? Existing expenses will remain.'
+        )
+
+      if (!confirmed) {
+        return
+      }
+
+
+      try {
+
+        await deleteRecurringExpense(
+          id
+        )
+
+
+        setRecurringExpenses(
+          (previous) =>
+            previous.filter(
+              (item) =>
+                String(
+                  item.id
+                ) !==
+                String(id)
+            )
+        )
+
+      } catch (error) {
+
+        alert(
+          error.message ||
+          'Failed to delete recurring expense'
+        )
+      }
+    }
+
+
+  /*
+    -----------------------------------------
+    REFRESH
+    -----------------------------------------
+  */
+
+  const refreshRecurring =
+    async () => {
+
+      try {
+
+        const data =
+          await getRecurringExpenses()
+
+
+        setRecurringExpenses(
+          data.map(
+            normalizeRecurring
+          )
+        )
+
+      } catch (error) {
+
+        alert(
+          error.message ||
+          'Failed to refresh recurring expenses'
+        )
+
+      }
+    }
+
+
+  return (
+    <section className="card recurring-expenses">
+
+      <div className="section-heading">
+
+        <div>
+
+          <h2>
+            Recurring Expenses
+          </h2>
+
+          <p>
+            Each recurring expense has one
+            scheduled occurrence per due date.
+          </p>
+
+        </div>
+
+
+        <button
+          type="button"
+          className="secondary-button"
+          onClick={
+            refreshRecurring
+          }
+        >
+          Refresh
+        </button>
+
+      </div>
+
+
+      <form
+        className="form-grid"
+        onSubmit={
+          handleAddRecurring
+        }
+      >
+
+        <div className="field">
+
+          <label>
+            Amount
+          </label>
+
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            placeholder="Enter amount"
+            value={amount}
+            onChange={(e) =>
+              setAmount(
+                e.target.value
+              )
+            }
+          />
+
+        </div>
+
+
+        <div className="field">
+
+          <label>
+            Category
+          </label>
+
+          <select
+            value={category}
+            onChange={(e) =>
+              setCategory(
+                e.target.value
+              )
+            }
+          >
+
+            <option value="">
+              Select category
+            </option>
+
+            {categories.map(
+              (item) => (
+                <option
+                  key={item}
+                  value={item}
+                >
+                  {item}
+                </option>
+              )
+            )}
+
+          </select>
+
+        </div>
+
+
+        <div className="field">
+
+          <label>
+            Description
+          </label>
+
+          <input
+            placeholder="Example: Room rent"
+            value={description}
+            onChange={(e) =>
+              setDescription(
+                e.target.value
+              )
+            }
+          />
+
+        </div>
+
+
+        <div className="field">
+
+          <label>
+            Start Date
+          </label>
+
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) =>
+              setStartDate(
+                e.target.value
+              )
+            }
+          />
+
+        </div>
+
+
+        <div className="field">
+
+          <label>
+            Frequency
+          </label>
+
+          <select
+            value={frequency}
+            onChange={(e) =>
+              setFrequency(
+                e.target.value
+              )
+            }
+          >
+
+            <option value="monthly">
+              Monthly
+            </option>
+
+            <option value="weekly">
+              Weekly
+            </option>
+
+            <option value="yearly">
+              Yearly
+            </option>
+
+          </select>
+
+        </div>
+
+
+        <div className="field field-full">
+
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={saving}
+          >
+            {saving
+              ? 'Saving...'
+              : 'Add Recurring Expense'}
+          </button>
+
+        </div>
+
+      </form>
+
+
+      <div className="subsection">
+
+        <h3>
+          Saved Recurring Expenses
+        </h3>
+
+
+        {recurringExpenses.length === 0 ? (
+
+          <div className="empty-state compact">
+
+            <p>
+              No recurring expenses added yet.
+            </p>
+
+          </div>
+
+        ) : (
+
+          <div className="recurring-grid">
+
+            {recurringExpenses.map(
+              (expense) => (
+
+                <article
+                  className="recurring-card"
+                  key={expense.id}
+                >
+
+                  <div className="expense-top">
+
+                    <div>
+
+                      <h3>
+                        {expense.description}
+                      </h3>
+
+                      <span
+                        className={`status-pill ${
+                          expense.active
+                            ? 'active'
+                            : 'paused'
+                        }`}
+                      >
+                        {expense.active
+                          ? 'Active'
+                          : 'Paused'}
+                      </span>
+
+                    </div>
+
+
+                    <strong>
+                      ₹
+                      {Number(
+                        expense.amount
+                      ).toFixed(2)}
+                    </strong>
+
+                  </div>
+
+
+                  <p>
+                    <b>
+                      Category:
+                    </b>{' '}
+                    {expense.category}
+                  </p>
+
+
+                  <p>
+                    <b>
+                      Frequency:
+                    </b>{' '}
+                    {expense.frequency}
+                  </p>
+
+
+                  <p>
+                    <b>
+                      Next Due:
+                    </b>{' '}
+                    {expense.nextDueDate}
+                  </p>
+
+
+                  <div className="card-actions">
+
+                    <button
+                      className="success-button"
+                      disabled={
+                        processingId ===
+                        expense.id
+                      }
+                      onClick={() =>
+                        addNow(
+                          expense
+                        )
+                      }
+                    >
+                      {processingId ===
+                      expense.id
+                        ? 'Adding...'
+                        : 'Add Now'}
+                    </button>
+
+
+                    <button
+                      className="secondary-button"
+                      onClick={() =>
+                        toggleActive(
+                          expense
+                        )
+                      }
+                    >
+                      {expense.active
+                        ? 'Pause'
+                        : 'Resume'}
+                    </button>
+
+
+                    <button
+                      className="danger-button"
+                      onClick={() =>
+                        deleteRecurring(
+                          expense.id
+                        )
+                      }
+                    >
+                      Delete
+                    </button>
+
+                  </div>
+
+                </article>
+
+              )
+            )}
+
+          </div>
+
+        )}
+
+      </div>
+
+    </section>
+  )
 }
 
-module.exports =
-  processRecurringExpenses
+
+export default RecurringExpenses
